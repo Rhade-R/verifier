@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>SHA-256 verifier</title>
+<style>
+	:root { color-scheme: light dark; }
+	body {
+		font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+		max-width: 42em;
+		margin: 2em auto;
+		padding: 0 1em;
+		line-height: 1.5;
+	}
+	h1 { font-size: 1.1em; margin-bottom: 0.2em; }
+	p.lede { font-size: 0.85em; opacity: 0.75; margin-top: 0; }
+	label { display: block; margin-top: 1em; font-weight: bold; font-size: 0.9em; }
+	input[type="text"] {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 0.5em;
+		font-family: inherit;
+		font-size: 1em;
+	}
+	button {
+		padding: 0.45em 1em;
+		margin-top: 0.4em;
+		font-family: inherit;
+		font-size: 1em;
+		cursor: pointer;
+	}
+	pre {
+		background: rgba(127,127,127,0.12);
+		padding: 0.75em;
+		border-radius: 6px;
+		overflow-wrap: anywhere;
+		white-space: pre-wrap;
+		margin: 0.25em 0 0;
+		font-size: 0.95em;
+	}
+	pre.dim { font-size: 0.85em; opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<h1>SHA-256 verifier</h1>
+<p class="lede">
+	Computes the SHA-256 of a URL or a local file.
+</p>
+
+<label for="url">URL</label>
+<input id="url" type="text" spellcheck="false" autocapitalize="none"
+	autocomplete="off" placeholder="https://example.com/file.html">
+
+<button id="go" type="button">Fetch &amp; hash</button>
+
+<label>…or a local file (use this if the fetch fails)</label>
+<button id="pick" type="button">Choose file…</button>
+<input id="file" type="file" hidden>
+
+<label>SHA-256</label>
+<pre id="out">(nothing hashed yet)</pre>
+
+<label>Bytes</label>
+<pre id="bytes" class="dim">—</pre>
+
+<script>
+'use strict';
+
+const urlInput = document.getElementById('url');
+const outEl = document.getElementById('out');
+const bytesEl = document.getElementById('bytes');
+
+function toHex(buf) {
+	const b = new Uint8Array(buf);
+	let s = '';
+	for (let i = 0; i < b.length; i++) {
+		s += b[i].toString(16).padStart(2, '0');
+	}
+	return s;
+}
+
+function setError(msg) {
+	outEl.textContent = 'Error: ' + msg;
+	bytesEl.textContent = '—';
+}
+
+async function hashBytes(bytes) {
+	const digest = await crypto.subtle.digest('SHA-256', bytes);
+	outEl.textContent = toHex(digest);
+	bytesEl.textContent = bytes.byteLength.toLocaleString() + ' bytes';
+}
+
+async function hashUrl(url) {
+	outEl.textContent = 'fetching…';
+	bytesEl.textContent = '—';
+	try {
+		const res = await fetch(url, { cache: 'no-store', mode: 'cors' });
+		if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+		const buf = await res.arrayBuffer();
+		await hashBytes(buf);
+	} catch (err) {
+		setError(err.message +
+			'  (If this is a CORS or mixed-content failure, use the ' +
+			'file picker instead.)');
+	}
+}
+
+document.getElementById('go').addEventListener('click', () => {
+	const url = urlInput.value.trim();
+	if (url) hashUrl(url);
+});
+
+urlInput.addEventListener('keydown', (e) => {
+	if (e.key === 'Enter') document.getElementById('go').click();
+});
+
+document.getElementById('pick').addEventListener('click', () => {
+	document.getElementById('file').click();
+});
+
+document.getElementById('file').addEventListener('change', async (e) => {
+	const f = e.target.files && e.target.files[0];
+	e.target.value = '';
+	if (!f) return;
+	outEl.textContent = 'reading…';
+	bytesEl.textContent = '—';
+	try {
+		const buf = await f.arrayBuffer();
+		await hashBytes(buf);
+	} catch (err) {
+		setError(err.message);
+	}
+});
+</script>
+
+</body>
+</html>
